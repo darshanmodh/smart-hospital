@@ -366,6 +366,7 @@ angular.module("serverApp", ['ngRoute', 'ngResource'])
                     $scope.modifyDC='false';
                     $scope.parameter = {};
                     $scope.configurations = {};
+                    $scope.readDeviceDataFlag=false;
                   }                    
                   else{
                     $scope.configurations = data[0];
@@ -377,6 +378,7 @@ angular.module("serverApp", ['ngRoute', 'ngResource'])
                     else
                       $scope.parameter.disableFlag = 'no';
                     $scope.modifyDC='true';
+                    $scope.readDeviceDataFlag=false;
                   }                    
           }).
           error(function(data,status){            
@@ -434,12 +436,6 @@ angular.module("serverApp", ['ngRoute', 'ngResource'])
 
     $scope.readDeviceData = function(device){        
       $scope.deviceData = {};
-      var headers = {
-          'Content-Type' : 'application/json',
-          'Access-Control-Allow-Headers' : 'Origin, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, X-Response-Time, X-PINGOTHER, X-CSRF-Token, X-Requested-With',
-          'Access-Control-Allow-Origin' : '*',
-          'Access-Control-Allow-Methods' : 'POST, GET, PUT, DELETE, OPTIONS'
-      };
 
         $http.get(device.device_uri+'/readDataValue/'+$scope.parameter.name).
           success(function (data){                                                
@@ -447,11 +443,13 @@ angular.module("serverApp", ['ngRoute', 'ngResource'])
                   $scope.readDeviceDataFlag=true;
                   console.log(data);
           }).
-          error(function(data,status){            
-            $scope.deviceData=data[0];            
-            console.log('Opps error',data);            
+          error(function(data,status){                      
+            if(status == 0){
+              $scope.readDeviceDataFlag=false;
+              $scope.deviceData = {'message' : 'Device cannot be reached.'};
+            }
+            console.log('Opps error');
           });
-      //alert($scope.readDeviceDataFlag);
     }
 
     $scope.writeDeviceData = function(device){
@@ -566,15 +564,15 @@ angular.module("serverApp", ['ngRoute', 'ngResource'])
     $scope.discoverDevices = function(){        
 
         var log =[];
+        $scope.liveDevices=[];
         angular.forEach($scope.devices,function(device){
           $http.get(device.device_uri+'/discover').
           success(function (data){                  
                   console.log(data);                  
+                  $scope.liveDevices.push(device);
           }).
-          error(function(data,status,headers){  
-            if(device.device_id == 1505)
-              $scope.liveDevices.push(device);
-            console.log('Opps error',headers());            
+          error(function(data,status){              
+            console.log('Opps error'+status);          
           });
         },log);               
                 
@@ -604,52 +602,53 @@ angular.module("serverApp", ['ngRoute', 'ngResource'])
       var log=[];
       $scope.notifications=[];
       $scope.notiRecord={};
-      var Arrdevice_id=[];
-      var Arrparameter_name = [];
-      var Arrpatient_name = [];
-      var Arrsafe_value = [];
-      var Arrroom_no=[];
-      var Arrvalue=[];
       var i=0;
 
       var resource = 'devallocation';
 
       $http.get('/server/'+resource).
         success(function (allocateddevices){                                          
-                angular.forEach(allocateddevices,function(record){
-                  
-                  Arrdevice_id.push(record.device_id);
-                  Arrroom_no.push(record.room_no);
+                angular.forEach(allocateddevices,function(record){                
 
                   //fetching patient name
                   $http.get('/server/patient/'+record.patient_id).
-                    success(function (patientData){                    
-                      Arrpatient_name.push(patientData[0].patient_name);
+                    success(function (patientData){
 
                       //fetching parameter name and safe value
                       $http.get('/server/chkdevconfig/'+record.device_id).
-                        success(function (deviceData){                        
+                        success(function (deviceDataSet){
+                          
+                          angular.forEach(deviceDataSet,function(deviceData){
+                            if(typeof(deviceData) != 'undefined')
+                            {
+                              $http.get('/server/chkfornotifications/'+record.device_id+'/'+deviceData.parameter_name+'/'+deviceData.safe_value).
+                              success(function (notificationData){
+                                if(notificationData.length > 0){
 
-                          Arrparameter_name.push(deviceData[0].parameter_name);
-                          Arrsafe_value.push(deviceData[0].safe_value);
+                                  // $scope.notiRecord.device_id = Arrdevice_id[i];
+                                  // $scope.notiRecord.room_no = Arrroom_no[i];
+                                  // $scope.notiRecord.patient_name = Arrpatient_name[i];                                
+                                  // $scope.notiRecord.parameter_name = Arrparameter_name[i];
+                                  // $scope.notiRecord.safe_value = Arrsafe_value[i];
+                                  // $scope.notiRecord.value = Arrvalue[i];
 
-                          $http.get('/server/chkfornotifications/'+record.device_id+'/'+deviceData[0].safe_value).
-                          success(function (notificationData){
-                            if(notificationData.length > 0){
+                                  $scope.notiRecord.device_id = record.device_id;
+                                  $scope.notiRecord.room_no = record.room_no;
+                                  $scope.notiRecord.patient_name = patientData[0].patient_name;                                
+                                  $scope.notiRecord.parameter_name = deviceData.parameter_name;
+                                  $scope.notiRecord.safe_value = deviceData.safe_value;
+                                  $scope.notiRecord.value = notificationData[0].value;
 
-                              Arrvalue.push(notificationData[0].value);
-
-                              $scope.notiRecord.device_id = Arrdevice_id[i];
-                              $scope.notiRecord.room_no = Arrroom_no[i];
-                              $scope.notiRecord.patient_name = Arrpatient_name[i];
-                              $scope.notiRecord.parameter_name = Arrparameter_name[i];
-                              $scope.notiRecord.safe_value = Arrsafe_value[i];
-                              $scope.notiRecord.value = Arrvalue[i];                            
-                              i++;                        
+                                  $scope.notifications.push($scope.notiRecord);
+                                  // i++;
+                                  $scope.notiRecord = {};
+                                }                              
+                              });
                             }
-                            $scope.notifications.push($scope.notiRecord);
-                            $scope.notiRecord = {};
                           });
+                          // else{
+                            // i++;
+                          // }                          
                         });
                     });                          
                 },log);
